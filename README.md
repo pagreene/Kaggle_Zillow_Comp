@@ -8,7 +8,8 @@ The cleaning object may be used to clean the data. You must first prime the clea
 
 Example:
 
-`from sklearn.model_selection import train_test_split
+```
+from sklearn.model_selection import train_test_split
 from analysis import loadData, Cleaner
 
 df = loadData()
@@ -20,4 +21,5 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.25)
 c = Cleaner()
 
 X_train, y_train = c.cleanData(X_train, y_train)
-X_test, y_test = c.cleanData(X_test, y_test)`
+X_test, y_test = c.cleanData(X_test, y_test)
+```
