@@ -8,9 +8,15 @@
 import pandas as pd
 import numpy as np
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from sklearn.preprocessing import MinMaxScaler
+from math import floor
 
+#==============================================================
+# These were defined to make sample files for testing. Sadly,
+# they failed. Trying to make a sample file that doesn't create
+# special glitches proved very hard.
+#==============================================================
 def loadLinesAndGetRand(fname, n_rand):
     '''
     Loads the lines as a list of strings from a given file and gives a random
@@ -52,16 +58,9 @@ def createTestFiles(n_train, n_prop):
     
     return
 
-#class DataManager(object):
-#    '''
-#    This object eases the management of the data.
-#    '''
-#    train_fname = 'train_2016.csv'
-#    
-#    def __init__(self):
-#        self.loaded = False
-#        self.cleaned = False
-    
+#===============================================================
+# Here begin the actual useful functions and classes.
+#===============================================================
 def loadData(train_fname = 'train_2016.csv', prop_fname = 'properties_2016.csv'):
     '''
     Load the properties and training data and merge them (inner) into
@@ -102,6 +101,12 @@ def loadData(train_fname = 'train_2016.csv', prop_fname = 'properties_2016.csv')
         
 
 class Cleaner(object):
+    '''
+    This object is used to clean the data sets in a way that does not allow data leaks.
+    
+    You need to clean the training data first, and then clean the test data. If you need
+    to re-prime, call cleanData with prime=True.
+    '''
     def __init__(self):
         self.primed = False
         self.col_dists = {}
@@ -117,8 +122,34 @@ class Cleaner(object):
         ret = date_val
         if isinstance(date_val, str):
             d = datetime.strptime(date_val, '%Y-%m-%d')
-            ret = (d - datetime(2016, 1, 1)).days/365
+            ret = d#(d - datetime(2016, 1, 1)).days/365
         return ret 
+    
+    def __breakDate(self, row_srs):
+        '''
+        Break up the date into year, month, and day, as separate columns
+        
+        Note: This is applied to rows, not columns, so do not set axis=1.
+        '''
+        if 'transactiondate' in row_srs:
+            date_val = row_srs['transactiondate']
+            base = 'transaction'
+            if isinstance(date_val, str):
+                # Convert the string to a datetime object.
+                d = datetime.strptime(date_val, '%Y-%m-%d')
+                
+                # Enter the year and month
+                row_srs[base + 'year'] = d.year
+                row_srs[base + 'month'] = d.month
+                
+                # I make the days uniformly scaled in each month.
+                days_in_month = (datetime(d.year + floor(d.month/12), d.month%12 + 1, 1) - timedelta(days=1)).day
+                row_srs[base + 'day'] = d.day/days_in_month
+                
+                # Remove the original item.
+                row_srs = row_srs.drop('transactiondate')
+        
+        return row_srs
     
     def __fixTypes(self, col_srs):
         '''
@@ -138,7 +169,7 @@ class Cleaner(object):
         new_name = ''
         for sqft in sqft_list:
             if sqft in name:
-                print('Replacing', name)
+                print('Fixing squares, replacing', name)
                 if 'size' not in name:
                     new_name = name.replace(sqft, 'size')
                 else:
@@ -250,7 +281,10 @@ class Cleaner(object):
         init_ncols = len(df.columns)
         
         df = df.apply(self.__fixTypes).apply(self.__convSqFt)
-        df['transactiondate'] = df['transactiondate'].apply(self.__processDate)
+        
+        print('Breaking up the years')
+        df = df.apply(self.__breakDate, axis=1)
+        print('Done breaking up the years')
         
         if not self.primed or prime:
             print('Priming')
@@ -262,11 +296,11 @@ class Cleaner(object):
         df = df.apply(self.__subIntsForStrings)
         
         if not self.primed or prime:
-            self.scaler.fit(df)
+            #self.scaler.fit(df)
             self.primed = True
         
-        print("Scaling the data")
-        df.loc[:] = self.scaler.transform(df)
+        #print("Scaling the data")
+        #df.loc[:] = self.scaler.transform(df)
         
         return df.drop('outputs', axis=1), df['outputs']
 
@@ -295,3 +329,38 @@ def summarizeValues(data_df):
         print(fmt.format(**prop_dict))
     
     return
+
+from sklearn.model_selection import train_test_split
+def splitAndClean(df, test_size = 0.25):
+    '''
+    Quick script to clean split and clean the data. The input should be the 
+    DataFrame that is output from loadData.
+    '''
+    X = df.drop('logerror', axis=1)
+    y = df['logerror']
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = test_size)
+    
+    c = Cleaner()
+    
+    X_train, y_train = c.cleanData(X_train, y_train)
+    X_test, y_test = c.cleanData(X_test, y_test)
+    
+    return X_train, X_test, y_train, y_test
+
+#====================================================================
+# Here begin some plotting utilities.
+#====================================================================
+
+def plotMap(df, color_col = None):
+    '''
+    Quick and easy function to plot themap with an option of coloring
+    it with data from another column.
+    '''
+    coloring = color_col is not None
+    kwargs = dict(x = 'longitude', y = 'latitude', kind='scatter', s = 1, alpha = 0.01)
+    
+    if coloring:
+        kwargs.update(dict(c = color_col, colorbar = coloring, colormap = 'Blues', alpha = 1))
+    
+    return df.plot(**kwargs)
