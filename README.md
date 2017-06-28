@@ -9,7 +9,6 @@ The cleaning object may be used to clean the data. You must first prime the clea
 Example:
 
 ```
-from sklearn.model_selection import train_test_split
 from analysis import loadData, splitAndClean
 
 df = loadData()
