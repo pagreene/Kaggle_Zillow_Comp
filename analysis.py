@@ -229,15 +229,16 @@ class Cleaner(object):
         Quick private function to substitute a random sample of values for NaN values
         '''
         if col_srs.isnull().any():
-            print("Subbing rands for NaN's for", col_srs.name)
+            N_null = col_srs.isnull().sum()
+            p = N_null/len(col_srs)
+            print("Subbing rands for NaN's in {}. {} were NaN.".format(col_srs.name, p))
             dist = self.col_dists[col_srs.name]
             try:
                 col_srs[col_srs.isnull()] = dist.sample(col_srs.isnull().sum(), replace=True).values
             except ValueError:
                 print(col_srs.index.duplicated().any())
                 raise
-        
-        return col_srs
+        return col_srs 
     
     def __subIntsForStrings(self, col_srs):
         '''
@@ -248,7 +249,6 @@ class Cleaner(object):
             print("Changing {} labels to int labesl for".format(col_srs.dtype), col_srs.name)
             col_srs = col_srs.apply(lambda val: self.col_idx_maps[col_srs.name][val])
         return col_srs
-       
     
     def __scaleData(self, col_srs):
         '''
@@ -257,8 +257,23 @@ class Cleaner(object):
         if col_srs.name in self.col_scalers:
             print("Scaling float data for", col_srs.name)
             col_srs = self.col_scalers[col_srs.name].transform(col_srs)
-        return col_srs
         
+        return col_srs
+    
+    def __logTaxes(self, col_srs):
+        '''
+        Take the log of all tax values
+        '''
+        log_list = ['lotsizesquarefeet',
+                    'structuretaxvaluedollarcnt',
+                    'taxvaluedollarcnt',
+                    'landtaxvaluedollarcnt',
+                    'taxamount']
+        
+        if col_srs.name in log_list:
+            col_srs = col_srs.apply(np.log10)
+        
+        return col_srs
     
     def cleanData(self, X, y, prime = False):
         '''
@@ -280,9 +295,14 @@ class Cleaner(object):
         
         init_ncols = len(df.columns)
         
-        df = df.apply(self.__fixTypes).apply(self.__convSqFt)
+        df = df.apply(self.__fixTypes).apply(self.__convSqFt).apply(self.__logTaxes)
+        df['taxdelinquencyflag'] = df['taxdelinquencyflag'].fillna('N')
+        df['fireplaceflag'] = df['fireplaceflag'].fillna(False)
         
         print('Breaking up the years')
+        df['transactionyear'] = np.NaN
+        df['transactionmonth'] = np.NaN
+        df['transactionday'] = np.NaN
         df = df.apply(self.__breakDate, axis=1)
         print('Done breaking up the years')
         
@@ -290,6 +310,7 @@ class Cleaner(object):
             print('Priming')
             df = df.apply(self.__primeCol)
         
+        df = df.dropna(axis=1, thresh=0.8*len(df))
         df = df.apply(self.__subRandForNaN)
         df = df.apply(self.__convertIntsToInts)
         df = df.drop(self.col_drops, axis=1, errors='ignore')
@@ -346,7 +367,7 @@ def splitAndClean(df, test_size = 0.25):
     X_train, y_train = c.cleanData(X_train, y_train)
     X_test, y_test = c.cleanData(X_test, y_test)
     
-    return X_train, X_test, y_train, y_test
+    return X_train, X_test, y_train, y_test, c
 
 #====================================================================
 # Here begin some plotting utilities.
@@ -364,3 +385,17 @@ def plotMap(df, color_col = None):
         kwargs.update(dict(c = color_col, colorbar = coloring, colormap = 'Blues', alpha = 1))
     
     return df.plot(**kwargs)
+
+def plotCategories(ax, df, x_col, y_col, color_col):
+    '''
+    Plot the points given by x_col and y_col, and color by the unique
+    values in color_col.
+    '''
+    groups = df.groupby(color_col)
+    
+    for name, group in groups:
+        ax.plot(group[x_col], group[y_col], '.', label = name)
+    ax.legend()
+    ax.set_xlabel(x_col)
+    ax.set_ylabel(y_col)
+    return
