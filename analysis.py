@@ -61,7 +61,7 @@ def createTestFiles(n_train, n_prop):
 #===============================================================
 # Here begin the actual useful functions and classes.
 #===============================================================
-def loadData(train_fname = 'train_2016.csv', prop_fname = 'properties_2016.csv'):
+def loadData(train_fname = 'train_2016_v2.csv', prop_fname = 'properties_2016.csv'):
     '''
     Load the properties and training data and merge them (inner) into
     a single dataframe.
@@ -82,10 +82,10 @@ def loadData(train_fname = 'train_2016.csv', prop_fname = 'properties_2016.csv')
     #                   .to_dict()['Description'])
     
     # Read in the raw csv
-    raw_props_df = pd.read_csv(prop_fname).set_index('parcelid')
+    raw_props_df = pd.read_csv(prop_fname, low_memory=False).set_index('parcelid')
     
     # Read in the training data
-    raw_train_df = pd.read_csv(train_fname).set_index('parcelid')
+    raw_train_df = pd.read_csv(train_fname, low_memory=False).set_index('parcelid')
     # key_dict.update(zip(raw_train_df.columns, 
     #        ['The difference: log(Zestimate) - log(Actual value), to be predicted', 
     #         'The date of the transaction to which this is compaired']))
@@ -247,7 +247,9 @@ class Cleaner(object):
         '''
         if col_srs.name in self.col_idx_maps.keys():
             print("Changing {} labels to int labesl for".format(col_srs.dtype), col_srs.name)
-            col_srs = col_srs.apply(lambda val: self.col_idx_maps[col_srs.name][val])
+            d = self.col_idx_maps[col_srs.name]
+            f = lambda val: d[val] if val in d.keys() else -1
+            col_srs = col_srs.apply(f)
         return col_srs
     
     def __scaleData(self, col_srs):
@@ -317,11 +319,11 @@ class Cleaner(object):
         df = df.apply(self.__subIntsForStrings)
         
         if not self.primed or prime:
-            #self.scaler.fit(df)
+            self.scaler.fit(df)
             self.primed = True
         
-        #print("Scaling the data")
-        #df.loc[:] = self.scaler.transform(df)
+        print("Scaling the data")
+        df.loc[:] = self.scaler.transform(df)
         
         return df.drop('outputs', axis=1), df['outputs']
 
